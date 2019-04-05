@@ -1,29 +1,9 @@
-/*
- * This file is part of the KubeVirt project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * Copyright 2018 Quamotion bvba
- *
- */
-
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
-	"io/ioutil"
 	"testing"
 
 	"kubevirt.io/kubevirt/pkg/api/v1"
@@ -31,7 +11,7 @@ import (
 	domainSchema "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
 
-func TestOnDefineGraphics(t *testing.T) {
+func TestDefineVncGraphics(t *testing.T) {
 	domainSpec := domainSchema.DomainSpec{}
 	domainSpecXML, err := xml.Marshal(domainSpec)
 	if err != nil {
@@ -41,6 +21,68 @@ func TestOnDefineGraphics(t *testing.T) {
 	vmi := new(v1.VirtualMachineInstance)
 	annotations := map[string]string{
 		vncPortAnnotation: "5900",
+	}
+
+	vmi.SetAnnotations(annotations)
+	t.Logf("%+v", vmi)
+
+	vmiJSON, err := json.Marshal(vmi)
+	if err != nil {
+		t.Errorf("Failed to marshal JSON")
+	}
+
+	params := hooksV1alpha1.OnDefineDomainParams{domainSpecXML, vmiJSON}
+
+	ctx := context.TODO()
+
+	server := new(v1alpha1Server)
+	result, err := server.OnDefineDomain(ctx, &params)
+	if err != nil {
+		t.Errorf("Failed to invoke OnDefineDomain")
+	}
+
+	domainSpecXML = result.GetDomainXML()
+	err = xml.Unmarshal(domainSpecXML, &domainSpec)
+	t.Skipf("%+v", domainSpec.Devices.Graphics[0])
+
+	if err != nil {
+		t.Errorf("Failed to unmarshal the domain spec")
+	}
+
+	if domainSpec.Devices.Graphics[0].Port != 5900 {
+		t.Errorf("Unexpected graphics type")
+	}
+
+}
+
+func TestDefineDiskDriver(t *testing.T) {
+	domainSpec := domainSchema.DomainSpec{
+		Devices: domainSchema.Devices{
+			Disks: []domainSchema.Disk{
+				{
+					Device: "disk",
+					Type:   "file",
+					Driver: &domainSchema.DiskDriver{
+						Name:  "qemu",
+						Type:  "raw",
+						Cache: "none",
+					},
+					Alias: &domainSchema.Alias{
+						Name: "test-disk",
+					},
+				},
+			},
+		},
+	}
+	domainSpecXML, err := xml.Marshal(domainSpec)
+	if err != nil {
+		t.Errorf("Failed to marshal JSON")
+	}
+
+	vmi := new(v1.VirtualMachineInstance)
+	annotations := map[string]string{
+		diskNamesAnnotation:  "test-disk",
+		diskDriverAnnotation: "qcow",
 	}
 
 	vmi.SetAnnotations(annotations)
@@ -59,19 +101,23 @@ func TestOnDefineGraphics(t *testing.T) {
 		t.Errorf("Failed to invoke OnDefineDomain")
 	}
 
-	domainSpecXML = result.GetDomainXML()
-	err = ioutil.WriteFile("domain.graphics.xml", domainSpecXML, 0644)
-	if err != nil {
-		t.Errorf("Failed to save the domain spec")
-	}
-
-	err = xml.Unmarshal(domainSpecXML, &domainSpec)
+	updateDomainSpec := domainSchema.DomainSpec{}
+	err = xml.Unmarshal(result.GetDomainXML(), &updateDomainSpec)
 	if err != nil {
 		t.Errorf("Failed to unmarshal the domain spec")
 	}
 
-	if domainSpec.Devices.Graphics[0].Port != 5900 {
-		t.Errorf("Unexpected graphics type")
+	if updateDomainSpec.Devices.Disks == nil || len(updateDomainSpec.Devices.Disks) == 0 {
+		t.Errorf("Disks not set")
+	}
+
+	disk := updateDomainSpec.Devices.Disks[0]
+	if disk.Driver == nil {
+		t.Errorf("Disk Driver not set")
+	}
+
+	if disk.Driver.Name != "qemu" || disk.Driver.Type != "qcow" || disk.Driver.Cache != "" {
+		t.Errorf("Disk Driver not change, %+v", disk.Driver)
 	}
 
 }

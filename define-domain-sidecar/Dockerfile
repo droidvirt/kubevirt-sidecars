@@ -1,5 +1,5 @@
 FROM fedora:28
 
-COPY droidvirt-hook-sidecar /droidvirt-hook-sidecar
+COPY define-domain-sidecar /define-domain-sidecar
 
-ENTRYPOINT [ "/droidvirt-hook-sidecar" ]
+ENTRYPOINT [ "/define-domain-sidecar" ]

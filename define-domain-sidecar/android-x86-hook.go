@@ -1,23 +1,3 @@
-/*
- * This file is part of the KubeVirt project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- *
- * Copyright 2018 Red Hat, Inc.
- * Copyright 2018 Quamotion bvba
- *
- */
-
 package main
 
 import (
@@ -27,6 +7,7 @@ import (
 	"net"
 	"os"
 	"strconv"
+	"strings"
 
 	"google.golang.org/grpc"
 
@@ -39,6 +20,10 @@ import (
 )
 
 const vncPortAnnotation = "vnc.droidvirt.io/port"
+
+// split name by comma
+const diskNamesAnnotation = "disk.droidvirt.io/names"
+const diskDriverAnnotation = "disk.droidvirt.io/driverType"
 const hookName = "droidvirt-define-domain"
 
 type infoServer struct{}
@@ -99,6 +84,31 @@ func (s v1alpha1Server) OnDefineDomain(ctx context.Context, params *hooksV1alpha
 						Address: "0.0.0.0",
 					},
 				},
+			}
+		}
+	}
+
+	// change data disk driver type: qcow2
+	if diskNames, found := annotations[diskNamesAnnotation]; !found {
+		log.Log.Infof("The '%s' attribute was not provided. Not configuring disk names.", diskNamesAnnotation)
+	} else {
+		driverType := annotations[diskDriverAnnotation]
+		if driverType == "" {
+			driverType = "qcow2"
+		}
+		names := strings.Split(diskNames, ",")
+		for idx, disk := range domainSpec.Devices.Disks {
+			if disk.Alias != nil {
+				for _, name := range names {
+					if name == disk.Alias.Name {
+						domainSpec.Devices.Disks[idx].Driver = &domainSchema.DiskDriver{
+							Name: "qemu",
+							Type: driverType,
+						}
+						log.Log.Infof("After Change: %+v", domainSpec.Devices.Disks[idx].Driver)
+						break
+					}
+				}
 			}
 		}
 	}
