@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sidecar-test
+  namespace: droidvirt
+  labels:
+    app: k8s-sidecar-injector
+data:
+  test1: |
+    name: test1
+    env:
+      - name: HELLO
+        value: world
+      - name: TEST
+        value: test_that
+    containers:
+    - name: sidecar-nginx
+      image: nginx:1.12.2
+      imagePullPolicy: IfNotPresent
+      ports:
+      - containerPort: 80
+      env:
+        - name: ENV_IN_SIDECAR
+          value: test-in-sidecar
