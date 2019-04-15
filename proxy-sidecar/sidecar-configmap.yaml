@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proxy-sidecar-config
+  namespace: droidvirt
+  labels:
+    app: k8s-sidecar-injector
+data:
+  proxy-sidecar: |
+    name: proxy-sidecar
+    shareProcessNamespace: true
+    containers:
+    - name: proxy-sidecar
+      image: droidvirt/proxy-sidecar:ss-libev
+      imagePullPolicy: IfNotPresent
+      securityContext:
+        capabilities:
+          add:
+          - NET_ADMIN
+      readinessProbe:
+        exec:
+          command:
+          - cat
+          - /var/run/kubevirt-infra/healthy_sidecar
+        failureThreshold: 5
+        initialDelaySeconds: 2
+        periodSeconds: 2
+        successThreshold: 1
+        timeoutSeconds: 5
+      volumeMounts:
+      - mountPath: /var/run/libvirt
+        name: libvirt-runtime
+      - mountPath: /var/run/kubevirt-infra
+        name: infra-ready-mount
+      env:
+      - name: DOMAIN_NAME
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.annotations['kubevirt.io/domain']
+      - name: DOMAIN_UID
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.labels['kubevirt.io/created-by']
+      - name: POD_NAMESPACE
+        valueFrom:
+          fieldRef:
+            fieldPath: metadata.namespace
+      args:
+      - --sidecar-readiness-file=/var/run/kubevirt-infra/healthy_sidecar
+      - --launcher-check-times=15
