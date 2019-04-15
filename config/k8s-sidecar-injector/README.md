@@ -1,9 +1,10 @@
-# Source Code
+# Deploy injectro
+## Source Code
 
 * Code is Fork From [tumblr/injector](https://github.com/tumblr/k8s-sidecar-injector) to [lxs137/injector](https://github.com/lxs137/k8s-sidecar-injector)
 * Determine mutation by pod's labels
 
-# Create TLS first (`cd ./tls`)
+## Create TLS first (`cd ./tls`)
 
 ### Generating TLS Certs
 
@@ -36,7 +37,7 @@ kubectl create secret generic k8s-sidecar-injector \
     kubectl -n ${NAMESPACE} apply -f -
 ```
 
-# Create k8s resources (`cd ./k8s-yaml`)
+## Create k8s resources (`cd ./k8s-yaml`)
 
 ```bash
 kubectl apply -f clusterrole.yaml
@@ -45,4 +46,20 @@ kubectl apply -n ${NAMESPACE} -f serviceaccount.yaml
 kubectl apply -n ${NAMESPACE} -f service.yaml
 kubectl apply -n ${NAMESPACE} -f deployment.yaml
 cat mutating-webhook-configuration.yaml | sed "s/__NAMESPACE__/${NAMESPACE}/" | kubectl apply -f -
+# Create sidecar config first
+# Example in configmap-sidecar-test.yaml
+```
+
+# Prepare injection resources
+
+* namespace: `kubectl label namespace <namespace> sidecar-injector=enabled`
+
+* pod: 
+```yaml
+...
+kind: Pod
+metadata:
+  labels:
+    injector.droidvirt.io/request: <sidecar_name>
+... 
 ```
