@@ -1,2 +1,4 @@
 proxy-sidecar
 proxy.tar
+
+*_mock.go

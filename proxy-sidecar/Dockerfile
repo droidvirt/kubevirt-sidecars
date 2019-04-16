@@ -1,4 +1,6 @@
-FROM alpine:latest
+FROM shadowsocks/shadowsocks-libev:v3.2.5
+
+USER root
 
 RUN echo "https://mirrors.aliyun.com/alpine/v3.9/main" > /etc/apk/repositories \
 	&& echo "https://mirrors.aliyun.com/alpine/v3.9/community" >> /etc/apk/repositories \

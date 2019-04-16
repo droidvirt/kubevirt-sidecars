@@ -13,6 +13,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 
+	"kubevirt.io/kubevirt/cmd/droidvirt-sidecar/proxy-sidecar/monitor"
 	"kubevirt.io/kubevirt/pkg/log"
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
@@ -120,7 +121,7 @@ func main() {
 		panic(fmt.Errorf("Wait libvirt ready error: %s", err))
 	}
 
-	domainConn := createLibvirtConnection()
+	domainConn := monitor.CreateLibvirtConnection()
 	defer domainConn.Close()
 
 	c := make(chan os.Signal, 1)
@@ -137,13 +138,13 @@ func main() {
 		close(signalStopChan)
 	}()
 
-	events := subscribeDomainEvent(domainConn, *name, *namespace, types.UID(*uid))
+	events := monitor.SubscribeDomainEvent(domainConn, *name, *namespace, types.UID(*uid))
 	markReady(*sidecarReadinessFile)
 
 	for {
 		domain := waitForDomainUUID(*qemuTimeout, events, signalStopChan)
 		if domain != nil {
-			log.Log.Infof("Domain added: %+v", domain)
+			log.Log.Infof("Domain added: %+v", domain.Spec)
 		}
 	}
 

@@ -8,23 +8,21 @@ import (
 )
 
 func TestWaitLibvirtReady(t *testing.T) {
-	mockUID := "42"
-	mockShareDir := "/tmp/libvirt"
-	mockSocketsDir := filepath.Join(mockShareDir, "sockets")
-	mockSockPath := filepath.Join(mockSocketsDir, mockUID+"_sock")
+	mockReadinessDir := "/tmp/droidvirt/"
+	mockReadinessFile := filepath.Join(mockReadinessDir, "healthy")
 
-	os.MkdirAll(mockSocketsDir, 0755)
-	defer os.RemoveAll(mockShareDir)
+	os.MkdirAll(mockReadinessDir, 0755)
+	defer os.RemoveAll(mockReadinessDir)
 
 	go func() {
 		time.Sleep(5 * time.Second)
-		_, err := os.Create(mockSockPath)
+		_, err := os.Create(mockReadinessFile)
 		if err != nil {
 			t.Errorf("Create mock sock file err: %s", err)
 		}
 	}()
 
-	isReady, err := waitLibvirtReady(mockShareDir, mockUID, 3)
+	isReady, err := waitLauncherReady(mockReadinessFile, 3)
 	if err != nil || !isReady {
 		t.Errorf("Wait libvirt ready error: %s", err)
 	}
