@@ -1,7 +1,9 @@
 package monitor
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"time"
 
 	libvirt "github.com/libvirt/libvirt-go"
@@ -15,10 +17,35 @@ import (
 	"kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/util"
 )
 
-type libvirtEvent struct {
-	Domain     string
-	Event      *libvirt.DomainEventLifecycle
-	AgentEvent *libvirt.DomainEventAgentLifecycle
+// WaitLauncherReady :
+// check virt-laucher pod readiness at interval
+func WaitLauncherReady(readinessFilePath string, checkTimes int) (bool, error) {
+	checkCount := 0
+	ticker := time.NewTicker(2 * time.Second)
+	for range ticker.C {
+		isExist, err := fileExists(readinessFilePath)
+		log.Log.Infof("Try check virt-launcher ready count: %d", checkCount)
+		if err != nil || checkCount > checkTimes {
+			return false, errors.New("check error or timeout")
+		} else if isExist {
+			return true, nil
+		} else {
+			checkCount++
+		}
+	}
+	return false, errors.New("unknown")
+}
+
+func fileExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	exists := false
+
+	if err == nil {
+		exists = true
+	} else if os.IsNotExist(err) {
+		err = nil
+	}
+	return exists, err
 }
 
 // CreateLibvirtConnection :

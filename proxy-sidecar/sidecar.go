@@ -1,17 +1,14 @@
 package main
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	libvirt "github.com/libvirt/libvirt-go"
+	"github.com/libvirt/libvirt-go"
 	"github.com/spf13/pflag"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
+	"os"
+	"os/signal"
+	"syscall"
 
 	"kubevirt.io/kubevirt/cmd/droidvirt-sidecar/proxy-sidecar/monitor"
 	"kubevirt.io/kubevirt/pkg/log"
@@ -47,23 +44,6 @@ func init() {
 	args.launcherReadiness = "/var/run/kubevirt-infra/healthy"
 }
 
-func waitLauncherReady(readinessFilePath string, checkTimes int) (bool, error) {
-	checkCount := 0
-	ticker := time.NewTicker(2 * time.Second)
-	for range ticker.C {
-		isExist, err := fileExists(readinessFilePath)
-		log.Log.Infof("Try check virt-launcher ready count: %d", checkCount)
-		if err != nil || checkCount > checkTimes {
-			return false, errors.New("check error or timeout")
-		} else if isExist {
-			return true, nil
-		} else {
-			checkCount++
-		}
-	}
-	return false, errors.New("unknown")
-}
-
 func markReady(readinessFile string) {
 	f, err := os.OpenFile(readinessFile, os.O_RDONLY|os.O_CREATE, 0666)
 	if err != nil {
@@ -73,25 +53,9 @@ func markReady(readinessFile string) {
 	log.Log.Info("Marked as ready")
 }
 
-func fileExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	exists := false
+func waitForDomainUUID(events chan watch.Event, stop chan struct{}) *api.Domain {
 
-	if err == nil {
-		exists = true
-	} else if os.IsNotExist(err) {
-		err = nil
-	}
-	return exists, err
-}
-
-func waitForDomainUUID(timeout time.Duration, events chan watch.Event, stop chan struct{}) *api.Domain {
-
-	ticker := time.NewTicker(timeout).C
 	select {
-	case <-ticker:
-		log.Log.Errorf("timed out waiting for domain to be defined")
-		return nil
 	case e := <-events:
 		if e.Type == watch.Deleted {
 			return nil
@@ -108,17 +72,22 @@ func waitForDomainUUID(timeout time.Duration, events chan watch.Event, stop chan
 }
 
 func main() {
+	// domain
 	name := pflag.String("name", args.domainName, "Name of the VirtualMachineInstance")
 	uid := pflag.String("uid", args.domainUID, "UID of the VirtualMachineInstance")
 	namespace := pflag.String("namespace", args.podNamespace, "Namespace of the VirtualMachineInstance")
+	// readiness
 	launcherReadinessFile := pflag.String("launcher-readiness-file", args.launcherReadiness, "Pod looks for this file to determine when virt-launcher is initialized")
 	sidecarReadinessFile := pflag.String("sidecar-readiness-file", "/var/run/kubevirt-infra/healthy_sidecar", "Pod looks for this file to determine when proxy sidecar is initialized")
 	launcherCheckTimes := pflag.Int("launcher-check-times", 15, "Times of virt-launcher check")
-	qemuTimeout := pflag.Duration("qemu-timeout", 3*time.Minute, "Amount of time to wait for qemu")
+	// socks
+	socksServer := pflag.String("socks-server", "192.168.80.211", "socks server address")
+	socksPort := pflag.Int("socks-port", 1080, "socks server port")
+	socksPassword := pflag.String("socks-password", "password", "socks server address")
 
-	isReady, err := waitLauncherReady(*launcherReadinessFile, *launcherCheckTimes)
+	isReady, err := monitor.WaitLauncherReady(*launcherReadinessFile, *launcherCheckTimes)
 	if err != nil || !isReady {
-		panic(fmt.Errorf("Wait libvirt ready error: %s", err))
+		panic(fmt.Errorf("wait libvirt ready error: %s", err))
 	}
 
 	domainConn := monitor.CreateLibvirtConnection()
@@ -138,13 +107,19 @@ func main() {
 		close(signalStopChan)
 	}()
 
+	startSocksProxy(*socksServer, *socksPort, *socksPassword, signalStopChan)
+
 	events := monitor.SubscribeDomainEvent(domainConn, *name, *namespace, types.UID(*uid))
 	markReady(*sidecarReadinessFile)
 
 	for {
-		domain := waitForDomainUUID(*qemuTimeout, events, signalStopChan)
+		domain := waitForDomainUUID(events, signalStopChan)
 		if domain != nil {
-			log.Log.Infof("Domain added: %+v", domain.Spec)
+			log.Log.Infof("Domain added: %v", domain.Spec)
+			err := hackIptables(socksLocalAddress, socksLoadlPort)
+			if err != nil {
+				log.Log.Reason(err).Errorf("hack iptables error")
+			}
 		}
 	}
 

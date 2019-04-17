@@ -1,4 +1,4 @@
-package main
+package monitor
 
 import (
 	"os"
@@ -22,7 +22,7 @@ func TestWaitLibvirtReady(t *testing.T) {
 		}
 	}()
 
-	isReady, err := waitLauncherReady(mockReadinessFile, 3)
+	isReady, err := WaitLauncherReady(mockReadinessFile, 3)
 	if err != nil || !isReady {
 		t.Errorf("Wait libvirt ready error: %s", err)
 	}

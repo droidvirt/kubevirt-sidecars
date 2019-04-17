@@ -1,6 +1,11 @@
 package iptables
 
+//go:generate mockgen -destination=./iptables_mock.go -package=iptables -write_package_comment=false kubevirt.io/kubevirt/cmd/droidvirt-sidecar/proxy-sidecar/iptables IptablesHandler
+
 import (
+	"errors"
+	"fmt"
+	"net"
 	"strings"
 
 	"github.com/coreos/go-iptables/iptables"
@@ -10,23 +15,21 @@ import (
 var (
 	// Handler :
 	Handler              IptablesHandler
-	rulesTable           = "nat"
-	kubevirtForwardChain = "KUBEVIRT_POSTINBOUND"
 )
 
-// IptablesHandler create interface just for mock
+// IptablesHandler : just for mock
 type IptablesHandler interface {
-	iptablesNewChain(table string, chain string) error
-	iptablesClearChain(table string, chain string) error
-	iptablesAppendRule(table string, chain string, rulespec ...string) error
-	iptablesListRules(table string, chain string) ([]string, error)
-	// ParseForwardPorts() ([]int, error)
+	IptablesNewChain(table string, chain string) error
+	IptablesClearChain(table string, chain string) error
+	IptablesAppendRule(table string, chain string, rulespec ...string) error
+	IptablesInsertRule(table string, chain string, rulespec ...string) error
+	IptablesListRules(table string, chain string) ([]string, error)
 }
 
 type IptablesUtilsHandler struct{}
 
 // iptables -t table -N chain
-func (h *IptablesUtilsHandler) iptablesNewChain(table string, chain string) error {
+func (h *IptablesUtilsHandler) IptablesNewChain(table string, chain string) error {
 	iptablesObject, err := iptables.New()
 	if err != nil {
 		return err
@@ -35,7 +38,7 @@ func (h *IptablesUtilsHandler) iptablesNewChain(table string, chain string) erro
 }
 
 // iptables -t table -F chain
-func (h *IptablesUtilsHandler) iptablesClearChain(table string, chain string) error {
+func (h *IptablesUtilsHandler) IptablesClearChain(table string, chain string) error {
 	iptablesObject, err := iptables.New()
 	if err != nil {
 		return err
@@ -44,7 +47,7 @@ func (h *IptablesUtilsHandler) iptablesClearChain(table string, chain string) er
 }
 
 // iptables -t table -A chain ...
-func (h *IptablesUtilsHandler) iptablesAppendRule(table string, chain string, rulespec ...string) error {
+func (h *IptablesUtilsHandler) IptablesAppendRule(table string, chain string, rulespec ...string) error {
 	iptablesObject, err := iptables.New()
 	if err != nil {
 		return err
@@ -52,8 +55,17 @@ func (h *IptablesUtilsHandler) iptablesAppendRule(table string, chain string, ru
 	return iptablesObject.Append(table, chain, rulespec...)
 }
 
+// iptables -t table -I chain ...
+func (h *IptablesUtilsHandler) IptablesInsertRule(table string, chain string, rulespec ...string) error {
+	iptablesObject, err := iptables.New()
+	if err != nil {
+		return err
+	}
+	return iptablesObject.Insert(table, chain, 0, rulespec...)
+}
+
 // iptables -t table -S chain
-func (h *IptablesUtilsHandler) iptablesListRules(table string, chain string) ([]string, error) {
+func (h *IptablesUtilsHandler) IptablesListRules(table string, chain string) ([]string, error) {
 	iptablesObject, err := iptables.New()
 	if err != nil {
 		return nil, err
@@ -62,29 +74,65 @@ func (h *IptablesUtilsHandler) iptablesListRules(table string, chain string) ([]
 	if err != nil {
 		return nil, err
 	}
+	// ignore rule of chain creation
 	return rules[1:], nil
 }
 
+func InitHandler() {
+	if Handler == nil {
+		Handler = &IptablesUtilsHandler{}
+	}
+}
+
 // ParseForwardPorts :
-// parse which ports be forwarded from libvirt VM to pod nic
-func ParseForwardPorts(h IptablesHandler) ([]int, error) {
-	rules, err := h.iptablesListRules(rulesTable, kubevirtForwardChain)
+// parse rule params of "--dport"
+func ParseForwardPorts(h IptablesHandler, nat string, chain string) ([]int, error) {
+	rules, err := h.IptablesListRules(nat, chain)
 	if err != nil {
 		return nil, err
 	}
 
+	reason := ""
 	ports := make([]int, 0)
 	for _, rule := range rules {
 		flags := pflag.NewFlagSet("iptables-flag", pflag.ContinueOnError)
 		flags.ParseErrorsWhitelist.UnknownFlags = true
 		forwardPort := flags.Int("dport", 0, "")
 		err := flags.Parse(strings.Split(rule, " "))
-		if err == nil {
+		if err != nil {
+			reason = fmt.Sprintf("%s; %s", reason, err.Error())
+		} else if *forwardPort != 0 {
 			ports = append(ports, *forwardPort)
-		} else {
-			return nil, err
 		}
 	}
 
 	return ports, nil
+}
+
+// ParseVirtualMachineIP :
+// parse rule params of "--source" or "-s"
+func ParseVirtualMachineIP(h IptablesHandler, nat string, chain string) (*net.IPNet, error) {
+	rules, err := h.IptablesListRules(nat, chain)
+	if err != nil {
+		return nil, err
+	}
+
+	reason := ""
+	for _, rule := range rules {
+		flags := pflag.NewFlagSet("iptables-flag", pflag.ContinueOnError)
+		flags.ParseErrorsWhitelist.UnknownFlags = true
+		sourceCIDR := flags.StringP("source", "s", "", "")
+		err := flags.Parse(strings.Split(rule, " "))
+		if err != nil {
+			reason = fmt.Sprintf("%s; %s", reason, err.Error())
+		} else if *sourceCIDR != "" {
+			_, ipNet, err := net.ParseCIDR(*sourceCIDR)
+			if err == nil {
+				return ipNet, nil
+			} else {
+				reason = fmt.Sprintf("%s; %s", reason, err.Error())
+			}
+		}
+	}
+	return nil, errors.New(reason)
 }

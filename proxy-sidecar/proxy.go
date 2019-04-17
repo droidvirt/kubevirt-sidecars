@@ -9,11 +9,13 @@ import (
 	"kubevirt.io/kubevirt/pkg/log"
 )
 
-var (
-	socksLocalAddress = "127.0.0.1"
-	socksLoadlPort = 1080
+const (
+	socksLocalAddress  = "127.0.0.1"
+	socksLoadlPort     = 1080
 	socksEncryptMethod = "rc4-md5"
 )
+
+var socksLogger = log.Logger("socks")
 
 func startSocksProxy(server string, port int, pwd string, stopChan chan struct{}) {
 	// Spawn socks from monitor process in order to ensure the socks
@@ -24,8 +26,8 @@ func startSocksProxy(server string, port int, pwd string, stopChan chan struct{}
 	go func() {
 		for {
 			exitChan := make(chan struct{})
-			cmd := exec.Command("/usr/bin/ss-redir", 
-				"-s", server, 
+			cmd := exec.Command("/usr/bin/ss-redir",
+				"-s", server,
 				"-p", strconv.Itoa(port),
 				"-b", socksLocalAddress,
 				"-l", strconv.Itoa(socksLoadlPort),
@@ -36,37 +38,37 @@ func startSocksProxy(server string, port int, pwd string, stopChan chan struct{}
 			// connect socks's stderr to our own stdout in order to see the logs in the container logs
 			stderrReader, err := cmd.StderrPipe()
 			if err != nil {
-				log.Log.Reason(err).Error("failed to start socks")
+				socksLogger.Reason(err).Error("failed to start socks")
 				panic(err)
 			}
 			go func() {
 				scanner := bufio.NewScanner(stderrReader)
 				for scanner.Scan() {
-					log.Log.Errorf("socks error: %s", scanner.Text())
+					socksLogger.Errorf("socks error: %s", scanner.Text())
 				}
 				if err := scanner.Err(); err != nil {
-					log.Log.Reason(err).Error("failed to read socks stderr")
+					socksLogger.Reason(err).Error("failed to read socks stderr")
 				}
 			}()
 
 			stdoutReader, err := cmd.StdoutPipe()
 			if err != nil {
-				log.Log.Reason(err).Error("failed to start socks")
+				socksLogger.Reason(err).Error("failed to start socks")
 				panic(err)
 			}
 			go func() {
 				scanner := bufio.NewScanner(stdoutReader)
 				for scanner.Scan() {
-					log.Log.Infof("socks: %s", scanner.Text())
+					socksLogger.Infof("socks: %s", scanner.Text())
 				}
 				if err := scanner.Err(); err != nil {
-					log.Log.Reason(err).Error("failed to read socks stdout")
+					socksLogger.Reason(err).Error("failed to read socks stdout")
 				}
 			}()
 
 			err = cmd.Start()
 			if err != nil {
-				log.Log.Reason(err).Error("failed to start socks")
+				socksLogger.Reason(err).Error("failed to start socks")
 				panic(err)
 			}
 
@@ -80,7 +82,7 @@ func startSocksProxy(server string, port int, pwd string, stopChan chan struct{}
 				cmd.Process.Kill()
 				return
 			case <-exitChan:
-				log.Log.Errorf("socks exited, restarting")
+				socksLogger.Errorf("socks exited, restarting")
 			}
 
 			// this sleep is to avoid consumming all resources in the
