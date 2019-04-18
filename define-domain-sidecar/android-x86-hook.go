@@ -4,27 +4,25 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"google.golang.org/grpc"
 	"net"
 	"os"
-	"strconv"
-	"strings"
-
-	"google.golang.org/grpc"
 
 	vmSchema "kubevirt.io/kubevirt/pkg/api/v1"
-	hooks "kubevirt.io/kubevirt/pkg/hooks"
+	"kubevirt.io/kubevirt/pkg/hooks"
 	hooksInfo "kubevirt.io/kubevirt/pkg/hooks/info"
 	hooksV1alpha1 "kubevirt.io/kubevirt/pkg/hooks/v1alpha1"
 	"kubevirt.io/kubevirt/pkg/log"
 	domainSchema "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
 
-const vncPortAnnotation = "vnc.droidvirt.io/port"
-
-// split name by comma
-const diskNamesAnnotation = "disk.droidvirt.io/names"
-const diskDriverAnnotation = "disk.droidvirt.io/driverType"
-const hookName = "droidvirt-define-domain"
+const (
+	vncPortAnnotation          = "vnc.droidvirt.io/port"
+	vncWebsocketPortAnnotation = "websocket.vnc.droidvirt.io/port"
+	diskNamesAnnotation        = "disk.droidvirt.io/names" // split name by comma
+	diskDriverAnnotation       = "disk.droidvirt.io/driverType"
+	hookName                   = "droidvirt-define-domain"
+)
 
 type infoServer struct{}
 
@@ -68,50 +66,11 @@ func (s v1alpha1Server) OnDefineDomain(ctx context.Context, params *hooksV1alpha
 		panic(err)
 	}
 
-	if vncPort, found := annotations[vncPortAnnotation]; !found {
-		log.Log.Infof("The '%s' attribute was not provided. Not configuring vnc listen port.", vncPortAnnotation)
-	} else {
-		port, err := strconv.ParseInt(vncPort, 10, 32)
-		if err != nil {
-			log.Log.Infof("Invalid VNC Port: %s", vncPort)
-		} else {
-			domainSpec.Devices.Graphics = []domainSchema.Graphics{
-				{
-					Type: "vnc",
-					Port: int32(port),
-					Listen: &domainSchema.GraphicsListen{
-						Type:    "address",
-						Address: "0.0.0.0",
-					},
-				},
-			}
-		}
-	}
+	convertVNCOptions(annotations, &domainSpec)
+	log.Log.Infof("after vnc convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.QEMUCmd)
 
-	// change data disk driver type: qcow2
-	if diskNames, found := annotations[diskNamesAnnotation]; !found {
-		log.Log.Infof("The '%s' attribute was not provided. Not configuring disk names.", diskNamesAnnotation)
-	} else {
-		driverType := annotations[diskDriverAnnotation]
-		if driverType == "" {
-			driverType = "qcow2"
-		}
-		names := strings.Split(diskNames, ",")
-		for idx, disk := range domainSpec.Devices.Disks {
-			if disk.Alias != nil {
-				for _, name := range names {
-					if name == disk.Alias.Name {
-						domainSpec.Devices.Disks[idx].Driver = &domainSchema.DiskDriver{
-							Name: "qemu",
-							Type: driverType,
-						}
-						log.Log.Infof("After Change: %+v", domainSpec.Devices.Disks[idx].Driver)
-						break
-					}
-				}
-			}
-		}
-	}
+	convertDiskOptions(annotations, &domainSpec)
+	log.Log.Infof("after disk convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.QEMUCmd)
 
 	newDomainXML, err := xml.Marshal(domainSpec)
 	if err != nil {

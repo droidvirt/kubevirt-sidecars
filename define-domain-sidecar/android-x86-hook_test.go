@@ -24,7 +24,6 @@ func TestDefineVncGraphics(t *testing.T) {
 	}
 
 	vmi.SetAnnotations(annotations)
-	t.Logf("%+v", vmi)
 
 	vmiJSON, err := json.Marshal(vmi)
 	if err != nil {
@@ -41,18 +40,66 @@ func TestDefineVncGraphics(t *testing.T) {
 		t.Errorf("Failed to invoke OnDefineDomain")
 	}
 
-	domainSpecXML = result.GetDomainXML()
-	err = xml.Unmarshal(domainSpecXML, &domainSpec)
-	t.Skipf("%+v", domainSpec.Devices.Graphics[0])
+	updateDomainSpec := domainSchema.DomainSpec{}
+	err = xml.Unmarshal(result.GetDomainXML(), &updateDomainSpec)
+	t.Logf("%+v", updateDomainSpec.Devices.Graphics[0])
 
 	if err != nil {
 		t.Errorf("Failed to unmarshal the domain spec")
 	}
 
-	if domainSpec.Devices.Graphics[0].Port != 5900 {
+	if updateDomainSpec.Devices.Graphics[0].Port != 5900 {
 		t.Errorf("Unexpected graphics type")
 	}
 
+}
+
+func TestDefineVncWebSocket(t *testing.T) {
+	domainSpec := domainSchema.DomainSpec{}
+	domainSpecXML, err := xml.Marshal(domainSpec)
+	if err != nil {
+		t.Errorf("Failed to marshal JSON")
+	}
+
+	vmi := new(v1.VirtualMachineInstance)
+	v1.SetObjectDefaults_VirtualMachineInstance(vmi)
+
+	annotations := map[string]string{
+		vncPortAnnotation: "5900",
+		vncWebsocketPortAnnotation: "5901",
+	}
+	vmi.SetAnnotations(annotations)
+
+	vmiJSON, err := json.Marshal(vmi)
+	if err != nil {
+		t.Errorf("Failed to marshal JSON")
+	}
+
+	params := hooksV1alpha1.OnDefineDomainParams{domainSpecXML, vmiJSON}
+
+	ctx := context.TODO()
+
+	server := new(v1alpha1Server)
+	result, err := server.OnDefineDomain(ctx, &params)
+	if err != nil {
+		t.Errorf("Failed to invoke OnDefineDomain")
+	}
+
+	updateDomainSpec := domainSchema.DomainSpec{}
+	err = xml.Unmarshal(result.GetDomainXML(), &updateDomainSpec)
+	t.Logf("%+v", updateDomainSpec)
+
+	if err != nil {
+		t.Errorf("Failed to unmarshal the domain spec")
+	}
+
+	if len(updateDomainSpec.Devices.Graphics) != 0 ||
+		updateDomainSpec.QEMUCmd == nil ||
+		len(updateDomainSpec.QEMUCmd.QEMUArg) != 2 ||
+		updateDomainSpec.QEMUCmd.QEMUArg[0].Value != "-vnc" ||
+		updateDomainSpec.QEMUCmd.QEMUArg[1].Value != "0.0.0.0:0,websocket=5901" {
+		t.Fail()
+	}
 }
 
 func TestDefineDiskDriver(t *testing.T) {
