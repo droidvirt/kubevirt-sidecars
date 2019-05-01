@@ -5,7 +5,7 @@
 * Client: virt-handler ("kubevirt.io/kubevirt/pkg/virt-handler/cmd-client")
 * Server: virt-launcher ("kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/cmd-server")
 * `k8s-client.informer -> virt-handler.VirtualMachineController -> virt-handler.cmd-client -> virt-launcher.cmd-server`
-* Method:
+* Method(client):
 ```
 SyncVirtualMachine(vmi *v1.VirtualMachineInstance) error
 SyncMigrationTarget(vmi *v1.VirtualMachineInstance) error
