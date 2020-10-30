@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"encoding/xml"
+	"fmt"
 	"google.golang.org/grpc"
 	"net"
 	"os"
+	"strings"
 
 	v1 "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/client-go/log"
@@ -17,13 +19,7 @@ import (
 )
 
 const (
-	vncPortAnnotation          = "vnc.droidvirt.io/port"
-	vncWebsocketPortAnnotation = "websocket.vnc.droidvirt.io/port"
-	diskNamesAnnotation        = "disk.droidvirt.io/names" // split name by comma
-	diskDriverAnnotation       = "disk.droidvirt.io/driverType"
-	loaderPathAnnotation       = "loader.osx-kvm.io/path"
-	nvramPathAnnotation        = "nvram.osx-kvm.io/path"
-	hookName                   = "osx-hook"
+	hookName         = "osx-hook"
 )
 
 type infoServer struct{}
@@ -68,24 +64,35 @@ func (s v1alpha1Server) OnDefineDomain(ctx context.Context, params *hooksV1alpha
 		panic(err)
 	}
 
-	appendOVMF(annotations, &domainSpec)
-	log.Log.Infof("after os convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.OS)
+	converterStr, isExist := annotations[converterType]
+	if !isExist {
+		return nil, fmt.Errorf("miss converter")
+	}
+	log.Log.Infof("enable converter: %s", converterStr)
 
-	appendQEMUArgs(&domainSpec)
-	log.Log.Infof("after qemu:arg convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.QEMUCmd)
-
-	appendInputDevice(&domainSpec)
-	log.Log.Infof("after input convert: inputs: %+v", domainSpec.Devices.Inputs)
-	log.Log.Infof("after input convert: controllers: %+v", domainSpec.Devices.Controllers)
-
-	convertVNCOptions(annotations, &domainSpec)
-	log.Log.Infof("after vnc convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.QEMUCmd)
-
-	convertDiskOptions(annotations, &domainSpec)
-	log.Log.Infof("after disk convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.Devices.Disks)
-
-	convertInterfaceModel(&domainSpec)
-	log.Log.Infof("after interface convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.Devices.Interfaces)
+	converters := strings.Split(converterStr, ",")
+	for _, converter := range converters {
+		switch ConverterType(converter) {
+		case BootLoaderConverter:
+			addBootLoader(annotations, &domainSpec)
+			break
+		case BoardConverter:
+			convertBoardType(&domainSpec)
+			break
+		case InputDeviceConverter:
+			addInputDevice(&domainSpec)
+			break
+		case VncConverter:
+			addVncQEMUArgs(annotations, &domainSpec)
+			break
+		case NICModelConverter:
+			convertNicModel(&domainSpec)
+			break
+		case DiskDriverConverter:
+			convertDiskOptions(annotations, &domainSpec)
+			break
+		}
+	}
 
 	newDomainXML, err := xml.Marshal(domainSpec)
 	if err != nil {
@@ -101,7 +108,7 @@ func (s v1alpha1Server) OnDefineDomain(ctx context.Context, params *hooksV1alpha
 }
 
 func main() {
-	// Start listening on /var/run/kubevirt-hooks/android-x86.sock,
+	// Start listening on /var/run/kubevirt-hooks/osx-hook.sock,
 	// and register an infoServer (to expose information about this
 	// hook) and a callback server (which does the heavy lifting).
 	log.InitializeLogging("osx-hook-sidecar")

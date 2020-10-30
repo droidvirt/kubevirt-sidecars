@@ -14,8 +14,8 @@ const (
 	defaultDiskDriver = "qcow2"
 )
 
-func appendOVMF(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
-	if loaderPath, found := annotations[loaderPathAnnotation]; found {
+func addBootLoader(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
+	if loaderPath, found := annotations[loaderPath]; found {
 		domainSpec.OS.BootLoader = &domainSchema.Loader{
 			Path:     loaderPath,
 			ReadOnly: "yes",
@@ -23,14 +23,14 @@ func appendOVMF(annotations map[string]string, domainSpec *domainSchema.DomainSp
 			Type:     "pflash",
 		}
 	}
-	if nvramPath, found := annotations[nvramPathAnnotation]; found {
+	if nvramPath, found := annotations[nvramPath]; found {
 		domainSpec.OS.NVRam = &domainSchema.NVRam{
 			NVRam: nvramPath,
 		}
 	}
 }
 
-func appendInputDevice(domainSpec *domainSchema.DomainSpec) {
+func addInputDevice(domainSpec *domainSchema.DomainSpec) {
 	inputDevices := make([]domainSchema.Input, 0)
 
 	inputDevices = append(inputDevices, domainSchema.Input{
@@ -69,7 +69,7 @@ func appendInputDevice(domainSpec *domainSchema.DomainSpec) {
 	})
 }
 
-func appendQEMUArgs(domainSpec *domainSchema.DomainSpec) {
+func convertBoardType(domainSpec *domainSchema.DomainSpec) {
 	log.Log.Info("Set options in XML 'qemu:commandline'")
 	if domainSpec.XmlNS == "" {
 		domainSpec.XmlNS = "http://libvirt.org/schemas/domain/qemu/1.0"
@@ -99,7 +99,7 @@ func appendQEMUArgs(domainSpec *domainSchema.DomainSpec) {
 	}
 }
 
-func convertVNCOptions(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
+func addVncQEMUArgs(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
 	var heads uint = 1
 	var ram uint = 65536
 	var vram uint = 65536
@@ -116,14 +116,14 @@ func convertVNCOptions(annotations map[string]string, domainSpec *domainSchema.D
 		},
 	}
 
-	if vncPortStr, found := annotations[vncPortAnnotation]; found {
+	if vncPortStr, found := annotations[vncPort]; found {
 		vncPort, err := strconv.ParseInt(vncPortStr, 10, 32)
 		if err != nil || vncPort < 5900 {
 			log.Log.Errorf("Invalid VNC Port: %s", vncPortStr)
 			return
 		}
 
-		if wsPortStr, found := annotations[vncWebsocketPortAnnotation]; !found {
+		if wsPortStr, found := annotations[vncWebsocketPort]; !found {
 			log.Log.Info("No WebSocket. Set options in XML 'devices.graphics' directly")
 			domainSpec.Devices.Graphics = []domainSchema.Graphics{
 				{
@@ -168,8 +168,8 @@ func convertVNCOptions(annotations map[string]string, domainSpec *domainSchema.D
 
 func convertDiskOptions(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
 	// change data disk driver type: qcow2
-	if diskNames, found := annotations[diskNamesAnnotation]; found {
-		driverType := annotations[diskDriverAnnotation]
+	if diskNames, found := annotations[diskNames]; found {
+		driverType := annotations[diskDriver]
 		if driverType == "" {
 			driverType = defaultDiskDriver
 		}
@@ -182,7 +182,6 @@ func convertDiskOptions(annotations map[string]string, domainSpec *domainSchema.
 							Name: "qemu",
 							Type: driverType,
 						}
-						log.Log.Infof("After Change: %+v", domainSpec.Devices.Disks[idx].Driver)
 						break
 					}
 				}
@@ -191,7 +190,7 @@ func convertDiskOptions(annotations map[string]string, domainSpec *domainSchema.
 	}
 }
 
-func convertInterfaceModel(domainSpec *domainSchema.DomainSpec) {
+func convertNicModel(domainSpec *domainSchema.DomainSpec) {
 	if domainSpec.Devices.Interfaces == nil {
 		return
 	}

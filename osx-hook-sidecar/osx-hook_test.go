@@ -36,8 +36,8 @@ func TestOSType(t *testing.T) {
 
 	vmi := new(v1.VirtualMachineInstance)
 	annotations := map[string]string{
-		loaderPathAnnotation: fakeLoaderPath,
-		nvramPathAnnotation:  fakeNVRamPath,
+		loaderPath: fakeLoaderPath,
+		nvramPath:  fakeNVRamPath,
 	}
 
 	vmi.SetAnnotations(annotations)
@@ -87,7 +87,7 @@ func TestDefineVncGraphics(t *testing.T) {
 
 	vmi := new(v1.VirtualMachineInstance)
 	annotations := map[string]string{
-		vncPortAnnotation: "5900",
+		vncPort: "5900",
 	}
 
 	vmi.SetAnnotations(annotations)
