@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"kubevirt.io/kubevirt/pkg/log"
+	"kubevirt.io/client-go/log"
 	domainSchema "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 	"strconv"
 	"strings"
@@ -85,6 +85,25 @@ func convertDiskOptions(annotations map[string]string, domainSpec *domainSchema.
 					}
 				}
 			}
+		}
+	}
+}
+
+func addQEMUArgs(annotations map[string]string, domainSpec *domainSchema.DomainSpec) {
+	if qemuArgs, found := annotations[qemuArgsAnnotation]; found {
+		args := []domainSchema.Arg{}
+		for _, arg := range strings.Split(qemuArgs, ";") {
+			args = append(args, domainSchema.Arg{
+					Value: arg,
+			})
+		}
+		if domainSpec.QEMUCmd == nil {
+			domainSpec.QEMUCmd = &domainSchema.Commandline{}
+		}
+		if domainSpec.QEMUCmd.QEMUArg == nil {
+			domainSpec.QEMUCmd.QEMUArg = args
+		} else {
+			domainSpec.QEMUCmd.QEMUArg = append(domainSpec.QEMUCmd.QEMUArg, args...)
 		}
 	}
 }

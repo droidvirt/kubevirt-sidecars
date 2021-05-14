@@ -6,7 +6,7 @@ import (
 	"encoding/xml"
 	"testing"
 
-	"kubevirt.io/kubevirt/pkg/api/v1"
+	"kubevirt.io/client-go/api/v1"
 	hooksV1alpha1 "kubevirt.io/kubevirt/pkg/hooks/v1alpha1"
 	domainSchema "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )

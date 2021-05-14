@@ -8,11 +8,11 @@ import (
 	"net"
 	"os"
 
-	vmSchema "kubevirt.io/kubevirt/pkg/api/v1"
+	vmSchema "kubevirt.io/client-go/api/v1"
 	"kubevirt.io/kubevirt/pkg/hooks"
 	hooksInfo "kubevirt.io/kubevirt/pkg/hooks/info"
 	hooksV1alpha1 "kubevirt.io/kubevirt/pkg/hooks/v1alpha1"
-	"kubevirt.io/kubevirt/pkg/log"
+	"kubevirt.io/client-go/log"
 	domainSchema "kubevirt.io/kubevirt/pkg/virt-launcher/virtwrap/api"
 )
 
@@ -21,6 +21,7 @@ const (
 	vncWebsocketPortAnnotation = "websocket.vnc.droidvirt.io/port"
 	diskNamesAnnotation        = "disk.droidvirt.io/names" // split name by comma
 	diskDriverAnnotation       = "disk.droidvirt.io/driverType"
+	qemuArgsAnnotation         = "qemu.droidvirt.io/args"
 	hookName                   = "droidvirt-define-domain"
 )
 
@@ -71,6 +72,8 @@ func (s v1alpha1Server) OnDefineDomain(ctx context.Context, params *hooksV1alpha
 
 	convertDiskOptions(annotations, &domainSpec)
 	log.Log.Infof("after disk convert: xmlns:%+v, %+v", domainSpec.XmlNS, domainSpec.QEMUCmd)
+
+	addQEMUArgs(annotations, &domainSpec)
 
 	newDomainXML, err := xml.Marshal(domainSpec)
 	if err != nil {
